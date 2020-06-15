@@ -27,6 +27,7 @@ namespace smac_planner
  * @class smac_planner::Node
  * @brief Node implementation for graph
  */
+template<typename T>
 class Node
 {
 public:
@@ -39,7 +40,7 @@ public:
   : last_node(nullptr),
     _cell_cost(static_cast<float>(cost_in)),
     _accumulated_cost(std::numeric_limits<float>::max()),
-    _i(index),
+    _index(index),
     _was_visited(false),
     _is_queued(false)
   {
@@ -60,7 +61,7 @@ public:
    */
   bool operator==(const Node & rhs)
   {
-    return this->_i == rhs._i;
+    return this->_index == rhs._i;
   }
 
   /**
@@ -73,7 +74,7 @@ public:
     last_node = nullptr;
     _cell_cost = static_cast<float>(cost);
     _accumulated_cost = std::numeric_limits<float>::max();
-    _i = index;
+    _index = index;
     _was_visited = false;
     _is_queued = false;
   }
@@ -146,15 +147,37 @@ public:
    */
   unsigned int & getIndex()
   {
-    return _i;
+    return _index;
   }
 
-  Node * last_node;
+  /**
+   * @brief Gets neighbors from node 
+   * @param lookup_table The table with index offsets to find neighbors
+   * @param neighbors The neighbors array to be filled
+   * @param graph The templated graph used to retrieve the neighbors
+   */
+  void getNeighbors(
+    const std::vector<int> & lookup_table,
+    std::vector<Node<T> *> & neighbors,
+    std::vector<Node<T>> * graph)
+  {
+    int index = 0;
+
+    for (unsigned int i = 0; i != lookup_table.size(); i++) {
+      index = _index + lookup_table[i];
+      if (index > 0)
+      {
+        neighbors.push_back(& graph->operator[](index));
+      }
+    }
+  }
+
+  Node<T> * last_node;
 
 private:
   float _cell_cost;
   float _accumulated_cost;
-  unsigned int _i;
+  unsigned int _index;
   bool _was_visited;
   bool _is_queued;
 };

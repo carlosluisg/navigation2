@@ -83,7 +83,7 @@ void AStarAlgorithm::setCosts(
     _x_size = x;
     _y_size = y;
     int x_size_int = static_cast<int>(_x_size);
-    _van_neumann_neighborhood = {
+    _von_neumann_neighborhood = {
       -1, +1, -x_size_int, +x_size_int};
     _moore_neighborhood = {
       -1, +1, -x_size_int, +x_size_int, -x_size_int - 1,
@@ -130,13 +130,13 @@ bool AStarAlgorithm::areInputsValid()
   }
 
   // Check if ending point is valid
-  Node * node;
-  if (getToleranceHeuristic() < 0.001 && !isNodeValid(_goal->getIndex(), node)) {
+  NodePtr node;
+  if (getToleranceHeuristic() < 0.001 && !isNodeValid(_goal->getIndex())) {
     throw std::runtime_error("Failed to compute path, goal is occupied with no tolerance.");
   }
 
   // Check if starting point is valid
-  if (!isNodeValid(getStart()->getIndex(), node)) {
+  if (!isNodeValid(getStart()->getIndex())) {
     throw std::runtime_error("Starting point in lethal space! Cannot create feasible plan.");
   }
 
@@ -158,7 +158,7 @@ bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float 
   getStart()->setAccumulatedCost(0.0);
 
   // Optimization: preallocate all variables
-  Node * current_node;
+  NodePtr current_node;
   float g_cost;
   NodeVector neighbors;
   int approach_iterations = 0;
@@ -190,19 +190,22 @@ bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float 
       if (approach_iterations > getOnApproachMaxIterations() ||
         iterations + 1 == getMaxIterations())
       {
-        Node * node = & _graph->operator[](_best_heuristic_node.second);
+        NodePtr node = & _graph->operator[](_best_heuristic_node.second);
         return backtracePath(node, path);
       }
     }
 
     // 4) Expand neighbors of Nbest not visited
     neighbors.clear();
-    getNeighbors(current_node->getIndex(), neighbors);
+    getNeighbors(current_node, neighbors);
 
     for (neighbor_iterator = neighbors.begin();
       neighbor_iterator != neighbors.end(); ++neighbor_iterator)
     {
-      Node * & neighbor = * neighbor_iterator;
+      NodePtr & neighbor = * neighbor_iterator;
+      if (!isNodeValid(neighbor->getIndex())) {
+        continue;
+      }
 
       // 4.1) Compute the cost to go to this node
       g_cost = current_node->getAccumulatedCost() +
@@ -225,18 +228,18 @@ bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float 
   return false;
 }
 
-bool AStarAlgorithm::isGoal(Node * & node)
+bool AStarAlgorithm::isGoal(NodePtr & node)
 {
   return node == getGoal();
 }
 
-bool AStarAlgorithm::backtracePath(Node * & node, IndexPath & path)
+bool AStarAlgorithm::backtracePath(NodePtr & node, IndexPath & path)
 {
   if (!node->last_node) {
     return false;
   }
 
-  Node * current_node = node;
+  NodePtr current_node = node;
 
   while (current_node->last_node) {
     path.push_back(current_node->getIndex());
@@ -250,31 +253,31 @@ bool AStarAlgorithm::backtracePath(Node * & node, IndexPath & path)
   return false;
 }
 
-Node * & AStarAlgorithm::getStart()
+NodePtr & AStarAlgorithm::getStart()
 {
   return _start;
 }
 
-Node * & AStarAlgorithm::getGoal()
+NodePtr & AStarAlgorithm::getGoal()
 {
   return _goal;
 }
 
-Node * AStarAlgorithm::getNode()
+NodePtr AStarAlgorithm::getNode()
 {
-  Node * node = _queue->top().second;
+  NodePtr node = _queue->top().second;
   _queue->pop();
   return node;
 }
 
-void AStarAlgorithm::addNode(const float cost, Node * & node)
+void AStarAlgorithm::addNode(const float cost, NodePtr & node)
 {
   _queue->emplace(cost, node);
 }
 
 float AStarAlgorithm::getTraversalCost(
-  Node * & last_node,
-  Node * & node)
+  NodePtr & last_node,
+  NodePtr & node)
 {
   float & node_cost = node->getCost();
 
@@ -302,7 +305,7 @@ float AStarAlgorithm::getHeuristicCost(const unsigned int & node)
   return heuristic;
 }
 
-void AStarAlgorithm::getNeighbors(const unsigned int & node, NodeVector & neighbors)
+void AStarAlgorithm::getNeighbors(NodePtr & node, NodeVector & neighbors)
 {
   // NOTE(stevemacenski): Irritatingly, the order here matters. If you start in free
   // space and then expand 8-connected, the first set of neighbors will be all cost
@@ -315,42 +318,24 @@ void AStarAlgorithm::getNeighbors(const unsigned int & node, NodeVector & neighb
   // 100 100 100   where lower-middle '100' is visited with same cost by both bottom '50' nodes
   // Therefore, it is valuable to have some low-potential across the entire map
   // rather than a small inflation around the obstacles
-  const int node_i = static_cast<int>(node);
 
   switch (_neighborhood) {
     case Neighborhood::UNKNOWN:
       throw std::runtime_error("Unkown neighborhood type selected.");
-    case Neighborhood::VAN_NEUMANN:
-      getValidNodes(_van_neumann_neighborhood, node_i, neighbors);
+    case Neighborhood::VON_NEUMANN:
+      node->getNeighbors(_von_neumann_neighborhood, neighbors, _graph.get());
       break;
     case Neighborhood::MOORE:
-      getValidNodes(_moore_neighborhood, node_i, neighbors);
+      node->getNeighbors(_moore_neighborhood, neighbors, _graph.get());
       break;
     default:
       throw std::runtime_error("Invalid neighborhood type selected.");
   }
 }
 
-void AStarAlgorithm::getValidNodes(
-  const std::vector<int> & lookup_table,
-  const int & node_i,
-  NodeVector & neighbors)
+bool AStarAlgorithm::isNodeValid(const unsigned int & i)
 {
-  Node * node;
-  int index = 0;
-
-  for (unsigned int i = 0; i != lookup_table.size(); i++) {
-    index = node_i + lookup_table[i];
-    if (index > 0 && isNodeValid(index, node))
-    {
-      neighbors.push_back(node);
-    }
-  }
-}
-
-bool AStarAlgorithm::isNodeValid(const unsigned int & i, Node * & node)
-{
-  node = & _graph->operator[](i);
+  NodePtr node = & _graph->operator[](i);
 
   // NOTE(stevemacenski): Right now, we do not check if the node has wrapped around
   // the regular grid (e.g. your node is on the edge of the costmap and i+1 

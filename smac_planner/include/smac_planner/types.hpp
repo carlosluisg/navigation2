@@ -24,18 +24,21 @@
 
 namespace smac_planner
 {
-
-typedef std::vector<Node> Graph;
-
-typedef std::vector<Node *> NodeVector;
-
 typedef std::vector<unsigned int> IndexPath;
 
 typedef std::pair<float, float> Coordinates;
 
 typedef std::pair<double, double> DoubleCoordinates;
 
-typedef std::pair<float, Node *> NodeElement;
+typedef Node<Coordinates> Node2D;
+
+typedef Node2D *  NodePtr;
+
+typedef std::vector<Node2D> Graph;
+
+typedef std::vector<Node2D *> NodeVector;
+
+typedef std::pair<float, Node2D *> NodeElement;
 
 typedef std::pair<float, unsigned int> NodeHeuristicPair;
 
@@ -52,15 +55,15 @@ typedef std::priority_queue<NodeElement, std::vector<NodeElement>, NodeComparato
 enum class Neighborhood
 {
   UNKNOWN = 0,
-  VAN_NEUMANN = 1,
+  VON_NEUMANN = 1,
   MOORE = 2
 };
 
 inline std::string toString(const Neighborhood & n)
 {
   switch (n) {
-    case Neighborhood::VAN_NEUMANN:
-      return "Van Neumann";
+    case Neighborhood::VON_NEUMANN:
+      return "Von Neumann";
     case Neighborhood::MOORE:
       return "Moore";
     default:
