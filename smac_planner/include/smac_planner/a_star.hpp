@@ -24,6 +24,7 @@
 
 #include "smac_planner/node.hpp"
 #include "smac_planner/types.hpp"
+#include "smac_planner/constants.hpp"
 
 namespace smac_planner
 {
@@ -141,13 +142,6 @@ private:
   inline bool isGoal(NodePtr & node);
 
   /**
-   * @brief Check if this node is valid
-   * @param i Node index
-   * @return whether this node is valid and collision free
-   */
-  inline bool isNodeValid(const unsigned int & i);
-
-  /**
    * @brief Get cost of traversal between nodes
    * @param node Node index current
    * @param node Node index of new
@@ -162,13 +156,6 @@ private:
    * @return Heuristic cost between the nodes
    */
   inline float getHeuristicCost(const unsigned int & node);
-
-  /**
-   * @brief Get a vector of neighbors around node
-   * @param node Node pointer
-   * @param neighbors Vector of node pointers to neighbors
-   */
-  inline void getNeighbors(NodePtr & node, NodeVector & neighbors);
 
   /**
    * @brief Check if inputs to planner are valid
@@ -229,9 +216,6 @@ private:
   std::unique_ptr<NodeQueue> _queue;
 
   Neighborhood _neighborhood;
-  std::vector<int> _von_neumann_neighborhood;
-  std::vector<int> _moore_neighborhood;
-
   NodeHeuristicPair _best_heuristic_node;
 };
 

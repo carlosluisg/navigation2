@@ -15,17 +15,17 @@
 #include <cmath>
 #include <stdexcept>
 #include <vector>
-#include <unordered_map>
 #include <memory>
-#include <queue>
 #include <algorithm>
-#include <chrono>
 #include <limits>
 
 #include "smac_planner/a_star.hpp"
 
 namespace smac_planner
 {
+
+// Initialize static variable
+std::vector<int> Node::neighborhood_vec = {};
 
 AStarAlgorithm::AStarAlgorithm(const Neighborhood & neighborhood)
 : _travel_cost_scale(0.0),
@@ -83,11 +83,7 @@ void AStarAlgorithm::setCosts(
     _x_size = x;
     _y_size = y;
     int x_size_int = static_cast<int>(_x_size);
-    _von_neumann_neighborhood = {
-      -1, +1, -x_size_int, +x_size_int};
-    _moore_neighborhood = {
-      -1, +1, -x_size_int, +x_size_int, -x_size_int - 1,
-      -x_size_int + 1, +x_size_int - 1, +x_size_int + 1};
+    Node::initNeighborhoods(x_size_int, _neighborhood);
     _graph->clear();
     _graph->reserve(x * y);
     for (unsigned int i = 0; i != x * y; i++) {
@@ -120,7 +116,7 @@ bool AStarAlgorithm::areInputsValid()
   }
 
   // Check if graph was filled in
-  if (_graph->size() == 0) {
+  if (_graph->empty()) {
     throw std::runtime_error("Failed to compute path, no costmap given.");
   }
 
@@ -130,13 +126,12 @@ bool AStarAlgorithm::areInputsValid()
   }
 
   // Check if ending point is valid
-  NodePtr node;
-  if (getToleranceHeuristic() < 0.001 && !isNodeValid(_goal->getIndex())) {
+  if (getToleranceHeuristic() < 0.001 && !_goal->isNodeValid(_traverse_unknown)) {
     throw std::runtime_error("Failed to compute path, goal is occupied with no tolerance.");
   }
 
   // Check if starting point is valid
-  if (!isNodeValid(getStart()->getIndex())) {
+  if (!getStart()->isNodeValid(_traverse_unknown)) {
     throw std::runtime_error("Starting point in lethal space! Cannot create feasible plan.");
   }
 
@@ -197,15 +192,12 @@ bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float 
 
     // 4) Expand neighbors of Nbest not visited
     neighbors.clear();
-    getNeighbors(current_node, neighbors);
+    current_node->getNeighbors(neighbors, _graph.get(), _traverse_unknown);
 
     for (neighbor_iterator = neighbors.begin();
       neighbor_iterator != neighbors.end(); ++neighbor_iterator)
     {
       NodePtr & neighbor = * neighbor_iterator;
-      if (!isNodeValid(neighbor->getIndex())) {
-        continue;
-      }
 
       // 4.1) Compute the cost to go to this node
       g_cost = current_node->getAccumulatedCost() +
@@ -246,11 +238,8 @@ bool AStarAlgorithm::backtracePath(NodePtr & node, IndexPath & path)
     current_node = current_node->last_node;
   }
 
-  if (path.size() > 1) {
-    return true;
-  }
+  return path.size() > 1;
 
-  return false;
 }
 
 NodePtr & AStarAlgorithm::getStart()
@@ -303,60 +292,6 @@ float AStarAlgorithm::getHeuristicCost(const unsigned int & node)
   }
 
   return heuristic;
-}
-
-void AStarAlgorithm::getNeighbors(NodePtr & node, NodeVector & neighbors)
-{
-  // NOTE(stevemacenski): Irritatingly, the order here matters. If you start in free
-  // space and then expand 8-connected, the first set of neighbors will be all cost
-  // _neutral_cost. Then its expansion will all be 2 * _neutral_cost but now multiple
-  // nodes are touching that node so the last cell to update the back pointer wins.
-  // Thusly, the ordering ends with the cardinal directions for both sets such that
-  // behavior is consistent in large free spaces between them. 
-  // 100  50   0 
-  // 100  50  50
-  // 100 100 100   where lower-middle '100' is visited with same cost by both bottom '50' nodes
-  // Therefore, it is valuable to have some low-potential across the entire map
-  // rather than a small inflation around the obstacles
-
-  switch (_neighborhood) {
-    case Neighborhood::UNKNOWN:
-      throw std::runtime_error("Unkown neighborhood type selected.");
-    case Neighborhood::VON_NEUMANN:
-      node->getNeighbors(_von_neumann_neighborhood, neighbors, _graph.get());
-      break;
-    case Neighborhood::MOORE:
-      node->getNeighbors(_moore_neighborhood, neighbors, _graph.get());
-      break;
-    default:
-      throw std::runtime_error("Invalid neighborhood type selected.");
-  }
-}
-
-bool AStarAlgorithm::isNodeValid(const unsigned int & i)
-{
-  NodePtr node = & _graph->operator[](i);
-
-  // NOTE(stevemacenski): Right now, we do not check if the node has wrapped around
-  // the regular grid (e.g. your node is on the edge of the costmap and i+1 
-  // goes to the other side). This check would add compute time and my assertion is
-  // that if you do wrap around, the heuristic will be so high it'll be added far
-  // in the queue that it will never be called if a valid path exists.
-  // This is intentionally un-included to increase speed, but be aware. If this causes
-  // trouble, please file a ticket and we can address it then.
-
-  // occupied node
-  auto & cost = node->getCost();
-  if (cost == OCCUPIED || cost == INSCRIBED) {
-    return false;
-  }
-
-  // unknown node
-  if (cost == UNKNOWN && !_traverse_unknown) {
-    return false;
-  }
-
-  return true;
 }
 
 void AStarAlgorithm::clearQueue()

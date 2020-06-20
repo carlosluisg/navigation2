@@ -20,6 +20,8 @@
 #include <queue>
 #include <limits>
 
+#include "smac_planner/constants.hpp"
+
 namespace smac_planner
 {
 
@@ -27,7 +29,6 @@ namespace smac_planner
  * @class smac_planner::Node
  * @brief Node implementation for graph
  */
-template<typename T>
 class Node
 {
 public:
@@ -61,7 +62,7 @@ public:
    */
   bool operator==(const Node & rhs)
   {
-    return this->_index == rhs._i;
+    return this->_index == rhs._index;
   }
 
   /**
@@ -157,22 +158,86 @@ public:
    * @param graph The templated graph used to retrieve the neighbors
    */
   void getNeighbors(
-    const std::vector<int> & lookup_table,
-    std::vector<Node<T> *> & neighbors,
-    std::vector<Node<T>> * graph)
+    std::vector<Node *> & neighbors,
+    std::vector<Node> * graph,
+    const bool & traverse_unknown)
   {
-    int index = 0;
+    // NOTE(stevemacenski): Irritatingly, the order here matters. If you start in free
+    // space and then expand 8-connected, the first set of neighbors will be all cost
+    // _neutral_cost. Then its expansion will all be 2 * _neutral_cost but now multiple
+    // nodes are touching that node so the last cell to update the back pointer wins.
+    // Thusly, the ordering ends with the cardinal directions for both sets such that
+    // behavior is consistent in large free spaces between them.
+    // 100  50   0
+    // 100  50  50
+    // 100 100 100   where lower-middle '100' is visited with same cost by both bottom '50' nodes
+    // Therefore, it is valuable to have some low-potential across the entire map
+    // rather than a small inflation around the obstacles
+    int index;
 
-    for (unsigned int i = 0; i != lookup_table.size(); i++) {
-      index = _index + lookup_table[i];
-      if (index > 0)
+    for (unsigned int i = 0; i != neighborhood_vec.size(); i++) {
+      index = _index + neighborhood_vec[i];
+      if (index > 0 && isNodeValid(traverse_unknown))
       {
         neighbors.push_back(& graph->operator[](index));
       }
     }
   }
 
-  Node<T> * last_node;
+  /**
+   * @brief Check if this node is valid
+   * @param traverse_unknown If we can explore unknown nodes on the graph
+   * @return whether this node is valid and collision free
+   */
+  bool isNodeValid(const bool & traverse_unknown) {
+    // NOTE(stevemacenski): Right now, we do not check if the node has wrapped around
+    // the regular grid (e.g. your node is on the edge of the costmap and i+1
+    // goes to the other side). This check would add compute time and my assertion is
+    // that if you do wrap around, the heuristic will be so high it'll be added far
+    // in the queue that it will never be called if a valid path exists.
+    // This is intentionally un-included to increase speed, but be aware. If this causes
+    // trouble, please file a ticket and we can address it then.
+
+    // occupied node
+    auto & cost = this->getCost();
+    if (cost == OCCUPIED || cost == INSCRIBED) {
+      return false;
+    }
+
+    // unknown node
+    if (cost == UNKNOWN && ! traverse_unknown) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * @brief Initialize possible neighborhoods for 2D Nodes:
+   * VON_NEUMANN --> 4-connected grid
+   * MOORE       --> 8-connected grid
+   * @param x_size The width of the underlying grid, in number of cells.
+   * @param neighborhood The neighborhood type to assign to the nodes.
+   */
+  static void initNeighborhoods(const int & x_size, const Neighborhood & neighborhood) {
+    switch (neighborhood) {
+      case Neighborhood::UNKNOWN:
+        throw std::runtime_error("Unknown neighborhood type selected.");
+      case Neighborhood::VON_NEUMANN:
+        neighborhood_vec = {-1, +1, -x_size, +x_size};
+        break;
+      case Neighborhood::MOORE:
+        neighborhood_vec = {-1, +1, -x_size, +x_size, -x_size - 1,
+                            -x_size + 1, +x_size - 1, +x_size + 1};
+        break;
+      default:
+        throw std::runtime_error("Invalid neighborhood type selected.");
+    }
+  }
+
+  Node * last_node;
+  static std::vector<int> neighborhood_vec;
+
 
 private:
   float _cell_cost;
