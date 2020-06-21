@@ -38,7 +38,7 @@ public:
    * @param index The index of this node for self-reference
    */
   explicit Node(unsigned char & cost_in, const unsigned int index)
-  : last_node(nullptr),
+  : parent(nullptr),
     _cell_cost(static_cast<float>(cost_in)),
     _accumulated_cost(std::numeric_limits<float>::max()),
     _index(index),
@@ -52,7 +52,7 @@ public:
    */
   ~Node()
   {
-    last_node = nullptr;
+    parent = nullptr;
   }
 
   /**
@@ -72,7 +72,7 @@ public:
    */
   void reset(const unsigned char & cost, const unsigned int index)
   {
-    last_node = nullptr;
+    parent = nullptr;
     _cell_cost = static_cast<float>(cost);
     _accumulated_cost = std::numeric_limits<float>::max();
     _index = index;
@@ -153,7 +153,6 @@ public:
 
   /**
    * @brief Gets neighbors from node 
-   * @param lookup_table The table with index offsets to find neighbors
    * @param neighbors The neighbors array to be filled
    * @param graph The templated graph used to retrieve the neighbors
    */
@@ -175,8 +174,8 @@ public:
     // rather than a small inflation around the obstacles
     int index;
 
-    for (unsigned int i = 0; i != neighborhood_vec.size(); i++) {
-      index = _index + neighborhood_vec[i];
+    for (unsigned int i = 0; i != neighbors_grid_offsets.size(); i++) {
+      index = _index + neighbors_grid_offsets[i];
       if (index > 0 && isNodeValid(traverse_unknown))
       {
         neighbors.push_back(& graph->operator[](index));
@@ -224,10 +223,10 @@ public:
       case Neighborhood::UNKNOWN:
         throw std::runtime_error("Unknown neighborhood type selected.");
       case Neighborhood::VON_NEUMANN:
-        neighborhood_vec = {-1, +1, -x_size, +x_size};
+        neighbors_grid_offsets = {-1, +1, -x_size, +x_size};
         break;
       case Neighborhood::MOORE:
-        neighborhood_vec = {-1, +1, -x_size, +x_size, -x_size - 1,
+        neighbors_grid_offsets = {-1, +1, -x_size, +x_size, -x_size - 1,
                             -x_size + 1, +x_size - 1, +x_size + 1};
         break;
       default:
@@ -235,9 +234,8 @@ public:
     }
   }
 
-  Node * last_node;
-  static std::vector<int> neighborhood_vec;
-
+  Node * parent;
+  static std::vector<int> neighbors_grid_offsets;
 
 private:
   float _cell_cost;

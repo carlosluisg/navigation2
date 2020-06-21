@@ -24,10 +24,8 @@
 namespace smac_planner
 {
 
-// Initialize static variable
-std::vector<int> Node::neighborhood_vec = {};
-
-AStarAlgorithm::AStarAlgorithm(const Neighborhood & neighborhood)
+template<typename NodeT>
+AStarAlgorithm<NodeT>::AStarAlgorithm(const Neighborhood & neighborhood)
 : _travel_cost_scale(0.0),
   _neutral_cost(0.0),
   _traverse_unknown(true),
@@ -43,7 +41,8 @@ AStarAlgorithm::AStarAlgorithm(const Neighborhood & neighborhood)
 {
 }
 
-AStarAlgorithm::~AStarAlgorithm()
+template<typename NodeT>
+AStarAlgorithm<NodeT>::~AStarAlgorithm()
 {
   _graph.reset();
   _queue.reset();
@@ -51,7 +50,8 @@ AStarAlgorithm::~AStarAlgorithm()
   _goal = nullptr;
 }
 
-void AStarAlgorithm::initialize(
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::initialize(
   const float & travel_cost_scale,
   const bool & allow_unknown,
   int & max_iterations,
@@ -74,7 +74,8 @@ void AStarAlgorithm::initialize(
   _max_on_approach_iterations = max_on_approach_iterations;
 }
 
-void AStarAlgorithm::setCosts(
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::setCosts(
   const unsigned int & x,
   const unsigned int & y,
   unsigned char * & costs)
@@ -83,7 +84,7 @@ void AStarAlgorithm::setCosts(
     _x_size = x;
     _y_size = y;
     int x_size_int = static_cast<int>(_x_size);
-    Node::initNeighborhoods(x_size_int, _neighborhood);
+    NodeT::initNeighborhoods(x_size_int, _neighborhood);
     _graph->clear();
     _graph->reserve(x * y);
     for (unsigned int i = 0; i != x * y; i++) {
@@ -97,18 +98,21 @@ void AStarAlgorithm::setCosts(
   }
 }
 
-void AStarAlgorithm::setStart(const unsigned int & value)
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::setStart(const unsigned int & value)
 {
   _start = & _graph->operator[](value);
 }
 
-void AStarAlgorithm::setGoal(const unsigned int & value)
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::setGoal(const unsigned int & value)
 {
   _goal = & _graph->operator[](value);
   _goal_coordinates = getCoords(_goal->getIndex());
 }
 
-bool AStarAlgorithm::areInputsValid()
+template<typename NodeT>
+bool AStarAlgorithm<NodeT>::areInputsValid()
 {
   // Check if initialization was called
   if (!_graph) {
@@ -138,7 +142,8 @@ bool AStarAlgorithm::areInputsValid()
   return true;
 }
 
-bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float & tolerance)
+template<typename NodeT>
+bool AStarAlgorithm<NodeT>::createPath(IndexPath & path, int & iterations, const float & tolerance)
 {  
   if (!areInputsValid()) {
     return false;
@@ -157,7 +162,7 @@ bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float 
   float g_cost;
   NodeVector neighbors;
   int approach_iterations = 0;
-  NodeVector::iterator neighbor_iterator;
+  typename NodeVector::iterator neighbor_iterator;
 
   while (iterations < getMaxIterations() && !_queue->empty()) {
 
@@ -206,7 +211,7 @@ bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float 
       // 4.2) If this is a lower cost than prior, we set this as the new cost and new approach
       if (g_cost < neighbor->getAccumulatedCost()) {
         neighbor->setAccumulatedCost(g_cost);
-        neighbor->last_node = current_node;
+        neighbor->parent = current_node;
 
         // 4.3) If not in queue or visited, add it
         if (!neighbor->wasVisited()) {
@@ -220,62 +225,69 @@ bool AStarAlgorithm::createPath(IndexPath & path, int & iterations, const float 
   return false;
 }
 
-bool AStarAlgorithm::isGoal(NodePtr & node)
+template<typename NodeT>
+bool AStarAlgorithm<NodeT>::isGoal(NodePtr & node)
 {
   return node == getGoal();
 }
 
-bool AStarAlgorithm::backtracePath(NodePtr & node, IndexPath & path)
+template<typename NodeT>
+bool AStarAlgorithm<NodeT>::backtracePath(NodePtr & node, IndexPath & path)
 {
-  if (!node->last_node) {
+  if (!node->parent) {
     return false;
   }
 
   NodePtr current_node = node;
 
-  while (current_node->last_node) {
+  while (current_node->parent) {
     path.push_back(current_node->getIndex());
-    current_node = current_node->last_node;
+    current_node = current_node->parent;
   }
 
   return path.size() > 1;
-
 }
 
-NodePtr & AStarAlgorithm::getStart()
+template<typename NodeT>
+typename AStarAlgorithm<NodeT>::NodePtr & AStarAlgorithm<NodeT>::getStart()
 {
   return _start;
 }
 
-NodePtr & AStarAlgorithm::getGoal()
+template<typename NodeT>
+typename AStarAlgorithm<NodeT>::NodePtr & AStarAlgorithm<NodeT>::getGoal()
 {
   return _goal;
 }
 
-NodePtr AStarAlgorithm::getNode()
+template<typename NodeT>
+typename AStarAlgorithm<NodeT>::NodePtr AStarAlgorithm<NodeT>::getNode()
 {
   NodePtr node = _queue->top().second;
   _queue->pop();
   return node;
 }
 
-void AStarAlgorithm::addNode(const float cost, NodePtr & node)
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::addNode(const float cost, NodePtr & node)
 {
   _queue->emplace(cost, node);
 }
 
-float AStarAlgorithm::getTraversalCost(
-  NodePtr & last_node,
-  NodePtr & node)
+template<typename NodeT>
+float AStarAlgorithm<NodeT>::getTraversalCost(
+  NodePtr & current_node,
+  NodePtr & new_node)
 {
-  float & node_cost = node->getCost();
+  float & node_cost = new_node->getCost();
 
   // rescale cost quadratically, makes search more convex
   // Higher the scale, the less cost for lengthwise expansion
   return _neutral_cost + _travel_cost_scale * node_cost * node_cost;
 }
 
-float AStarAlgorithm::getHeuristicCost(const unsigned int & node)
+template<typename NodeT>
+float AStarAlgorithm<NodeT>::getHeuristicCost(const unsigned int & node)
 {
   Coordinates node_coords = getCoords(node);
   float heuristic = hypotf(
@@ -294,43 +306,57 @@ float AStarAlgorithm::getHeuristicCost(const unsigned int & node)
   return heuristic;
 }
 
-void AStarAlgorithm::clearQueue()
+template<typename NodeT>
+void AStarAlgorithm<NodeT>::clearQueue()
 {
   while (!_queue->empty()) {
     _queue->pop();
   }
 }
 
-Coordinates AStarAlgorithm::getCoords(const unsigned int & index)
+template<typename NodeT>
+Coordinates AStarAlgorithm<NodeT>::getCoords(const unsigned int & index)
 {
   return Coordinates(
     static_cast<float>(index % getSizeX()),
     static_cast<float>(index / getSizeX()));
 }
 
-int & AStarAlgorithm::getMaxIterations()
+template<typename NodeT>
+int & AStarAlgorithm<NodeT>::getMaxIterations()
 {
   return _max_iterations;
 }
 
-int & AStarAlgorithm::getOnApproachMaxIterations()
+template<typename NodeT>
+int & AStarAlgorithm<NodeT>::getOnApproachMaxIterations()
 {
   return _max_on_approach_iterations;
 }
 
-float & AStarAlgorithm::getToleranceHeuristic()
+template<typename NodeT>
+float & AStarAlgorithm<NodeT>::getToleranceHeuristic()
 {
   return _tolerance;
 }
 
-unsigned int & AStarAlgorithm::getSizeX()
+template<typename NodeT>
+unsigned int & AStarAlgorithm<NodeT>::getSizeX()
 {
   return _x_size;
 }
 
-unsigned int & AStarAlgorithm::getSizeY()
+template<typename NodeT>
+unsigned int & AStarAlgorithm<NodeT>::getSizeY()
 {
   return _y_size;
 }
+
+// Instantiate AStartAlgorithm for the supported template type parameters
+// This is needed to prevent "undefined symbol" errors at runtime.
+template class AStarAlgorithm<Node>;
+
+// Initialize static variables
+std::vector<int> Node::neighbors_grid_offsets;
 
 }  // namespace smac_planner

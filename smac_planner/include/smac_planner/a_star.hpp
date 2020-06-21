@@ -31,11 +31,28 @@ namespace smac_planner
 
 /**
  * @class smac_planner::AStarAlgorithm
- * @brief An A* implementation for planning in a costmap
+ * @brief An A* implementation for planning in a costmap. Templated based on the Node type.
  */
+template<typename NodeT>
 class AStarAlgorithm
 {
 public:
+  typedef NodeT * NodePtr;
+  typedef std::vector<NodeT> Graph;
+  typedef std::vector<NodePtr> NodeVector;
+  typedef std::pair<float, NodePtr> NodeElement;
+  typedef std::pair<float, unsigned int> NodeHeuristicPair;
+
+  struct NodeComparator
+  {
+    bool operator()(const NodeElement & a, const NodeElement & b) const
+    {
+      return a.first > b.first;
+    }
+  };
+
+  typedef std::priority_queue<NodeElement, std::vector<NodeElement>, NodeComparator> NodeQueue;
+
   /**
    * @brief A constructor for smac_planner::PlannerServer
    * @param neighborhood The type of neighborhood to use for search (4 or 8 connected)
@@ -143,11 +160,11 @@ private:
 
   /**
    * @brief Get cost of traversal between nodes
-   * @param node Node index current
-   * @param node Node index of new
+   * @param current_node Pointer to current node
+   * @param new_node Pointer to new node
    * @return Reference traversal cost between the nodes
    */
-  inline float getTraversalCost(NodePtr & lastNode, NodePtr & node);
+  inline float getTraversalCost(NodePtr & current_node, NodePtr & new_node);
 
   /**
    * @brief Get cost of heuristic of node

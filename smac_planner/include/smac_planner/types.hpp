@@ -16,11 +16,6 @@
 #define SMAC_PLANNER__TYPES_HPP_
 
 #include <vector>
-#include <unordered_map>
-#include <utility>
-#include <queue>
-
-#include "smac_planner/node.hpp"
 
 namespace smac_planner
 {
@@ -30,25 +25,6 @@ typedef std::pair<float, float> Coordinates;
 
 typedef std::pair<double, double> DoubleCoordinates;
 
-typedef Node *  NodePtr;
-
-typedef std::vector<Node> Graph;
-
-typedef std::vector<Node *> NodeVector;
-
-typedef std::pair<float, Node *> NodeElement;
-
-typedef std::pair<float, unsigned int> NodeHeuristicPair;
-
-struct NodeComparator
-{
-  bool operator()(const NodeElement & a, const NodeElement & b) const
-  {
-    return a.first > b.first;
-  }
-};
-
-typedef std::priority_queue<NodeElement, std::vector<NodeElement>, NodeComparator> NodeQueue;
 }  // namespace smac_planner
 
 #endif  // SMAC_PLANNER__TYPES_HPP_

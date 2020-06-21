@@ -168,7 +168,7 @@ void SmacPlanner::configure(
     _upsampling_ratio = 2;
   }
 
-  _a_star = std::make_unique<AStarAlgorithm>(neighborhood);
+  _a_star = std::make_unique<AStarAlgorithm<Node>>(neighborhood);
   _a_star->initialize(
     travel_cost_scale,
     allow_unknown,
