@@ -173,12 +173,16 @@ public:
     // Therefore, it is valuable to have some low-potential across the entire map
     // rather than a small inflation around the obstacles
     int index;
+    Node * neighbor;
 
     for (unsigned int i = 0; i != neighbors_grid_offsets.size(); i++) {
       index = _index + neighbors_grid_offsets[i];
-      if (index > 0 && isNodeValid(traverse_unknown))
+      if (index > 0)
       {
-        neighbors.push_back(& graph->operator[](index));
+        neighbor = & graph->operator[](index);
+        if (neighbor->isNodeValid(traverse_unknown)) {
+          neighbors.push_back(neighbor);
+        }
       }
     }
   }
