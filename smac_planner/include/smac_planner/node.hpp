@@ -152,42 +152,6 @@ public:
   }
 
   /**
-   * @brief Gets neighbors from node 
-   * @param neighbors The neighbors array to be filled
-   * @param graph The templated graph used to retrieve the neighbors
-   */
-  void getNeighbors(
-    std::vector<Node *> & neighbors,
-    std::vector<Node> * graph,
-    const bool & traverse_unknown)
-  {
-    // NOTE(stevemacenski): Irritatingly, the order here matters. If you start in free
-    // space and then expand 8-connected, the first set of neighbors will be all cost
-    // _neutral_cost. Then its expansion will all be 2 * _neutral_cost but now multiple
-    // nodes are touching that node so the last cell to update the back pointer wins.
-    // Thusly, the ordering ends with the cardinal directions for both sets such that
-    // behavior is consistent in large free spaces between them.
-    // 100  50   0
-    // 100  50  50
-    // 100 100 100   where lower-middle '100' is visited with same cost by both bottom '50' nodes
-    // Therefore, it is valuable to have some low-potential across the entire map
-    // rather than a small inflation around the obstacles
-    int index;
-    Node * neighbor;
-
-    for (unsigned int i = 0; i != neighbors_grid_offsets.size(); i++) {
-      index = _index + neighbors_grid_offsets[i];
-      if (index > 0)
-      {
-        neighbor = & graph->operator[](index);
-        if (neighbor->isNodeValid(traverse_unknown)) {
-          neighbors.push_back(neighbor);
-        }
-      }
-    }
-  }
-
-  /**
    * @brief Check if this node is valid
    * @param traverse_unknown If we can explore unknown nodes on the graph
    * @return whether this node is valid and collision free
@@ -215,31 +179,7 @@ public:
     return true;
   }
 
-  /**
-   * @brief Initialize possible neighborhoods for 2D Nodes:
-   * VON_NEUMANN --> 4-connected grid
-   * MOORE       --> 8-connected grid
-   * @param x_size The width of the underlying grid, in number of cells.
-   * @param neighborhood The neighborhood type to assign to the nodes.
-   */
-  static void initNeighborhoods(const int & x_size, const Neighborhood & neighborhood) {
-    switch (neighborhood) {
-      case Neighborhood::UNKNOWN:
-        throw std::runtime_error("Unknown neighborhood type selected.");
-      case Neighborhood::VON_NEUMANN:
-        neighbors_grid_offsets = {-1, +1, -x_size, +x_size};
-        break;
-      case Neighborhood::MOORE:
-        neighbors_grid_offsets = {-1, +1, -x_size, +x_size, -x_size - 1,
-                            -x_size + 1, +x_size - 1, +x_size + 1};
-        break;
-      default:
-        throw std::runtime_error("Invalid neighborhood type selected.");
-    }
-  }
-
   Node * parent;
-  static std::vector<int> neighbors_grid_offsets;
 
 private:
   float _cell_cost;
