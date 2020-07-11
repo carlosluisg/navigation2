@@ -92,46 +92,27 @@ public:
 
 protected:
 
-  /**
-   * @brief Initialize the costmap to be used for planning.
-   * We either use the original costmap or downsample it for more efficient graph search.
-   */
-  void initCostmap();
-
-  /**
-   * @brief Create an occupancy grid to be published and visualized in rviz.
-   * The code was borrowed from costmap_2d_publisher.cpp
-   * @param costmap The costmap to be converted into occupancy grid
-   */
-  void createOccupancyGridFromCostmap(const nav2_costmap_2d::Costmap2D * costmap);
-
-  /**
-   * @brief Helper method to create conversion table between values of a costmap and an occupancy grid.
-   * The code was borrowed from costmap_2d_publisher.cpp
-   */
-  void setCostTranslationTable();
+  inline bool shouldDownsample();
 
   std::unique_ptr<AStarAlgorithm<Node>> _a_star;
   std::unique_ptr<Smoother> _smoother;
   std::unique_ptr<Upsampler> _upsampler;
   std::unique_ptr<CostmapDownsampler> _costmap_downsampler;
-  std::unique_ptr<nav_msgs::msg::OccupancyGrid> _grid;
+  std::unique_ptr<nav2_costmap_2d::Costmap2DPublisher> _costmap_pub;
+  std::shared_ptr<nav2_costmap_2d::Costmap2D> _downsampled_costmap;
   nav2_util::LifecycleNode::SharedPtr _node;
-  nav2_costmap_2d::Costmap2D * _original_costmap;
   nav2_costmap_2d::Costmap2D * _costmap;
   std::string _global_frame, _name;
   float _tolerance;
-  float _resolution;
+  int _downsampling_factor;
   bool _downsample_costmap;
   rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr _raw_plan_publisher;
   rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr _smoother_debug1_pub;
   rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr _smoother_debug2_pub;
   rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr _smoother_debug3_pub;
-  rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::OccupancyGrid>::SharedPtr _downsampled_costmap_pub;
   SmootherParams _smoother_params;
   OptimizerParams _optimizer_params;
   int _upsampling_ratio;
-  char * _cost_translation_table;
 };
 
 }  // namespace smac_planner

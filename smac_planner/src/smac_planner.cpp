@@ -74,9 +74,10 @@ SmacPlanner::SmacPlanner()
   _smoother(nullptr),
   _upsampler(nullptr),
   _node(nullptr),
-  _original_costmap(nullptr),
   _costmap(nullptr),
-  _costmap_downsampler(nullptr)
+  _costmap_downsampler(nullptr),
+  _costmap_pub(nullptr),
+  _downsampled_costmap(nullptr)
 {
 }
 
@@ -93,7 +94,7 @@ void SmacPlanner::configure(
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
 {
   _node = parent;
-  _original_costmap = costmap_ros->getCostmap();
+  _costmap = costmap_ros->getCostmap();
   _name = name;
   _global_frame = costmap_ros->getGlobalFrameID();
 
@@ -113,8 +114,8 @@ void SmacPlanner::configure(
           _node, name + ".downsample_costmap", rclcpp::ParameterValue(true));
   _node->get_parameter(name + ".downsample_costmap", _downsample_costmap);
   nav2_util::declare_parameter_if_not_declared(
-          _node, name + ".costmap_resolution", rclcpp::ParameterValue(_original_costmap->getResolution()));
-  _resolution = static_cast<float>(_node->get_parameter(name + ".costmap_resolution").as_double());
+          _node, name + ".downsampling_factor", rclcpp::ParameterValue(1));
+  _node->get_parameter(name + ".downsampling_factor", _downsampling_factor);
   nav2_util::declare_parameter_if_not_declared(
     _node, name + ".allow_unknown", rclcpp::ParameterValue(true));
   _node->get_parameter(name + ".allow_unknown", allow_unknown);
@@ -195,22 +196,10 @@ void SmacPlanner::configure(
     }
   }
 
-  // Init the downsampler and publisher, if needed
-  if (_downsample_costmap && _resolution > _original_costmap->getResolution()) {
-    _costmap_downsampler = std::make_unique<CostmapDownsampler>();
-
-    // Setup table to convert costmap to OccupancyGrid
-    setCostTranslationTable();
-  }
-
-  auto custom_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
   _raw_plan_publisher = _node->create_publisher<nav_msgs::msg::Path>("unsmoothed_plan", 1);
   _smoother_debug1_pub= _node->create_publisher<nav_msgs::msg::Path>("debug1", 1);
   _smoother_debug2_pub= _node->create_publisher<nav_msgs::msg::Path>("debug2", 1);
   _smoother_debug3_pub= _node->create_publisher<nav_msgs::msg::Path>("debug3", 1);
-  _downsampled_costmap_pub = _node->create_publisher<nav_msgs::msg::OccupancyGrid>(
-          "downsampled_costmap",
-          custom_qos);
 
   RCLCPP_INFO(
     _node->get_logger(), "Configured plugin %s of type SmacPlanner with "
@@ -230,7 +219,17 @@ void SmacPlanner::activate()
   _smoother_debug1_pub->on_activate();
   _smoother_debug2_pub->on_activate();
   _smoother_debug3_pub->on_activate();
-  _downsampled_costmap_pub->on_activate();
+
+  // Init the downsampler and publisher, if needed
+  // We have to initialize here and not on SmacPlanner::configure() because we need _costmap to be properly
+  // initialized after localizing
+  if (shouldDownsample()) {
+    _costmap_downsampler = std::make_unique<CostmapDownsampler>();
+    _downsampled_costmap = _costmap_downsampler->initialize(_costmap, _downsampling_factor);
+    _costmap_pub = std::make_unique<nav2_costmap_2d::Costmap2DPublisher>(
+            _node, _downsampled_costmap.get(), _global_frame, "downsampled_costmap", false);
+    _costmap_pub->on_activate();
+  }
 }
 
 void SmacPlanner::deactivate()
@@ -239,7 +238,9 @@ void SmacPlanner::deactivate()
     _node->get_logger(), "Deactivating plugin %s of type SmacPlanner",
     _name.c_str());
   _raw_plan_publisher->on_deactivate();
-  _downsampled_costmap_pub->on_activate();
+  if (shouldDownsample()) {
+    _costmap_pub->on_deactivate();
+  }
 }
 
 void SmacPlanner::cleanup()
@@ -250,8 +251,10 @@ void SmacPlanner::cleanup()
   _a_star.reset();
   _smoother.reset();
   _upsampler.reset();
+  _costmap_pub.reset();
   _costmap_downsampler.reset();
-  _raw_plan_publisher.reset(); 
+  _downsampled_costmap.reset();
+  _raw_plan_publisher.reset();
 }
 
 nav_msgs::msg::Path SmacPlanner::createPlan(
@@ -262,27 +265,32 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
   steady_clock::time_point a = steady_clock::now();
 #endif
 
-  // Initialize (if needed) costmap used for planning
-  if (!_costmap) {
-    initCostmap();
+  // Choose which costmap to use for the planning
+  std::shared_ptr<nav2_costmap_2d::Costmap2D> costmap;
+  if (shouldDownsample()) {
+    _costmap_downsampler->downsample();
+    _costmap_pub->publishCostmap();
+    costmap = _downsampled_costmap;
+  } else {
+    costmap = std::make_shared<nav2_costmap_2d::Costmap2D>(*_costmap);
   }
 
   // Set Costmap
-  unsigned char * char_costmap = _costmap->getCharMap();
+  unsigned char * char_costmap = costmap->getCharMap();
   _a_star->setCosts(
-    _costmap->getSizeInCellsX(),
-    _costmap->getSizeInCellsY(),
+    costmap->getSizeInCellsX(),
+    costmap->getSizeInCellsY(),
     char_costmap);
 
   // Set starting point
   unsigned int mx, my, index;
-  _costmap->worldToMap(start.pose.position.x, start.pose.position.y, mx, my);
-  index = _costmap->getIndex(mx, my);
+  costmap->worldToMap(start.pose.position.x, start.pose.position.y, mx, my);
+  index = costmap->getIndex(mx, my);
   _a_star->setStart(index);
 
   // Set goal point
-  _costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, mx, my);
-  index = _costmap->getIndex(mx, my);
+  costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, mx, my);
+  index = costmap->getIndex(mx, my);
   _a_star->setGoal(index);
 
   // Setup message
@@ -303,7 +311,7 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
   std::string error;
   try {
     if (!_a_star->createPath(
-      path, num_iterations, _tolerance / static_cast<float>(_costmap->getResolution())))
+      path, num_iterations, _tolerance / static_cast<float>(costmap->getResolution())))
     {
       if (num_iterations < _a_star->getMaxIterations()) {
         error = std::string("no valid path found.");
@@ -337,8 +345,8 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
     }
     unsigned int index_x, index_y;
     double world_x, world_y;
-    _costmap->indexToCells(path[i], index_x, index_y);
-    _costmap->mapToWorld(index_x, index_y, world_x, world_y);
+    costmap->indexToCells(path[i], index_x, index_y);
+    costmap->mapToWorld(index_x, index_y, world_x, world_y);
     path_world.push_back(Eigen::Vector2d(world_x, world_y));
     pose.pose.position.x = world_x;
     pose.pose.position.y = world_y;
@@ -352,9 +360,9 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
 
   // Smooth plan
   if (_smoother && path_world.size() > 4) {
-    MinimalCostmap mcmap(char_costmap, _costmap->getSizeInCellsX(),
-      _costmap->getSizeInCellsY(), _costmap->getOriginX(), _costmap->getOriginY(),
-      _costmap->getResolution());
+    MinimalCostmap mcmap(char_costmap, costmap->getSizeInCellsX(),
+      costmap->getSizeInCellsY(), costmap->getOriginX(), costmap->getOriginY(),
+      costmap->getResolution());
     if (!_smoother->smooth(path_world, & mcmap, _smoother_params)) {
       RCLCPP_WARN(
         _node->get_logger(),
@@ -483,63 +491,8 @@ void SmacPlanner::removeHook(std::vector<Eigen::Vector2d> & path)
   }
 }
 
-void SmacPlanner::initCostmap()
-{
-  if (_downsample_costmap && _resolution > _original_costmap->getResolution()) {
-    _costmap = _costmap_downsampler->downsample(_original_costmap, _resolution);
-    createOccupancyGridFromCostmap(_costmap);
-    _downsampled_costmap_pub->publish(std::move(_grid));
-  } else {
-    _costmap = _original_costmap;
-  }
-}
-
-  void SmacPlanner::createOccupancyGridFromCostmap(const nav2_costmap_2d::Costmap2D * costmap)
-{
-  float grid_resolution = costmap->getResolution();
-  float grid_width = costmap->getSizeInCellsX();
-  float grid_height = costmap->getSizeInCellsY();
-
-  _grid = std::make_unique<nav_msgs::msg::OccupancyGrid>();
-
-  _grid->header.frame_id = _global_frame;
-  _grid->header.stamp = rclcpp::Time();
-
-  _grid->info.resolution = grid_resolution;
-
-  _grid->info.width = grid_width;
-  _grid->info.height = grid_height;
-
-  double wx, wy;
-  costmap->mapToWorld(0, 0, wx, wy);
-  _grid->info.origin.position.x = wx - grid_resolution / 2;
-  _grid->info.origin.position.y = wy - grid_resolution / 2;
-  _grid->info.origin.position.z = 0.0;
-  _grid->info.origin.orientation.w = 1.0;
-
-  _grid->data.resize(_grid->info.width * _grid->info.height);
-
-  unsigned char * data = costmap->getCharMap();
-  for (unsigned int i = 0; i < _grid->data.size(); i++)
-  {
-    _grid->data[i] = _cost_translation_table[data[i]];
-  }
-}
-
-void SmacPlanner::setCostTranslationTable() {
-  _cost_translation_table = new char[256];
-
-  // special values:
-  _cost_translation_table[0] = 0;  // NO obstacle
-  _cost_translation_table[253] = 99;  // INSCRIBED obstacle
-  _cost_translation_table[254] = 100;  // LETHAL obstacle
-  _cost_translation_table[255] = -1;  // UNKNOWN
-
-  // regular cost values scale the range 1 to 252 (inclusive) to fit
-  // into 1 to 98 (inclusive).
-  for (int i = 1; i < 253; i++) {
-    _cost_translation_table[i] = static_cast<char>(1 + (97 * (i - 1)) / 251);
-  }
+bool SmacPlanner::shouldDownsample() {
+  return _downsample_costmap && _downsampling_factor > 1;
 }
 
 }  // namespace smac_planner
