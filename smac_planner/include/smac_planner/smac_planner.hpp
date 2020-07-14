@@ -91,9 +91,6 @@ public:
   void removeHook(std::vector<Eigen::Vector2d> & path);
 
 protected:
-
-  inline bool shouldDownsample();
-
   std::unique_ptr<AStarAlgorithm<Node>> _a_star;
   std::unique_ptr<Smoother> _smoother;
   std::unique_ptr<Upsampler> _upsampler;
@@ -113,6 +110,7 @@ protected:
   SmootherParams _smoother_params;
   OptimizerParams _optimizer_params;
   int _upsampling_ratio;
+  std::string _costmap_topic_name;
 };
 
 }  // namespace smac_planner

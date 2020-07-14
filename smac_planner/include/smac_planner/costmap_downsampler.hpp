@@ -33,7 +33,8 @@ public:
    * @brief A constructor for CostmapDownsampler
    */
   explicit CostmapDownsampler()
-  : _downsampling_factor(0)
+  : _costmap(nullptr),
+    _downsampled_costmap(nullptr)
   {
   }
 
@@ -47,44 +48,74 @@ public:
   /**
    * @brief Initialize the downsampled costmap object
    * @param costmap The costmap we want to downsample
-   * @param downsampling_factor Multiplier for the costmap resolution
+   * @param downsampling_factor Multiplier for the costmap sresolution
    * @return A shared ptr to the downsampled costmap
    */
   std::shared_ptr<nav2_costmap_2d::Costmap2D> initialize(
     nav2_costmap_2d::Costmap2D * costmap,
     const unsigned int & downsampling_factor)
   {
-    _size_x = costmap->getSizeInCellsX();
-    _size_y = costmap->getSizeInCellsY();
     _costmap = costmap;
     _downsampling_factor = downsampling_factor;
-    float rounded_resolution = _downsampling_factor * costmap->getResolution();
-    unsigned int map_cells_size_x = ceil(static_cast<float>(_size_x) / _downsampling_factor);
-    unsigned int map_cells_size_y = ceil(static_cast<float>(_size_y) / _downsampling_factor);
+    updateCostmapSize();
 
     _downsampled_costmap = std::make_shared<nav2_costmap_2d::Costmap2D>
-            (map_cells_size_x, map_cells_size_y, rounded_resolution,
-             _costmap->getOriginX(), _costmap->getOriginY(), UNKNOWN);
+      (_downsampled_size_x, _downsampled_size_y, _downsampled_resolution,
+       _costmap->getOriginX(), _costmap->getOriginY(), UNKNOWN);
+
     return _downsampled_costmap;
   }
 
   /**
    * @brief Downsample the given costmap by the downsampling factor
+   * @return A ptr to the downsampled costmap
    */
-  void downsample()
+  nav2_costmap_2d::Costmap2D * downsample()
   {
-    unsigned int new_size_x = _downsampled_costmap->getSizeInCellsX();
-    unsigned int new_size_y = _downsampled_costmap->getSizeInCellsY();
     unsigned int new_mx, new_my;
+    updateCostmapSize();
 
-    for (int i = 0; i < new_size_x * new_size_y; ++i) {
-      new_mx = i % new_size_x;
-      new_my = i / new_size_x;
+    // Adjust costmap size if needed
+    if (_downsampled_costmap->getSizeInCellsX() != _downsampled_size_x ||
+      _downsampled_costmap->getSizeInCellsY() != _downsampled_size_y) {
+      resizeCostmap();
+    }
+
+    // Assign costs
+    for (int i = 0; i < _downsampled_size_x * _downsampled_size_y; ++i) {
+      new_mx = i % _downsampled_size_x;
+      new_my = i / _downsampled_size_x;
       setCostOfCell(new_mx, new_my);
     }
+
+    return _downsampled_costmap.get();
   }
 
 private:
+  /**
+   * Update the sizes X-Y of the costmap and its downsampled version
+   */
+  void updateCostmapSize()
+  {
+    _size_x = _costmap->getSizeInCellsX();
+    _size_y = _costmap->getSizeInCellsY();
+    _downsampled_size_x = ceil(static_cast<float>(_size_x) / _downsampling_factor);
+    _downsampled_size_y = ceil(static_cast<float>(_size_y) / _downsampling_factor);
+    _downsampled_resolution = _downsampling_factor * _costmap->getResolution();
+  }
+
+  /**
+   * Resize the downsampled costmap. Used in case the costmap changes and we need to update the downsampled version
+   */
+  void resizeCostmap()
+  {
+    _downsampled_costmap->resizeMap(
+      _downsampled_size_x,
+      _downsampled_size_y,
+      _downsampled_resolution,
+      _costmap->getOriginX(),
+      _costmap->getOriginY());
+  }
 
   /**
    * @brief Explore all subcells of the original costmap and assign the max cost to the new (downsampled) cell
@@ -100,8 +131,7 @@ private:
     unsigned int x_offset = new_mx * _downsampling_factor;
     unsigned int y_offset = new_my * _downsampling_factor;
 
-    for(int j = 0; j < _downsampling_factor * _downsampling_factor; ++j)
-    {
+    for(int j = 0; j < _downsampling_factor * _downsampling_factor; ++j) {
       mx = std::min(x_offset + j % _downsampling_factor, _size_x - 1);
       my = std::min(y_offset + j / _downsampling_factor, _size_y - 1);
       cost = std::max(cost, _costmap->getCost(mx, my));
@@ -109,9 +139,12 @@ private:
     _downsampled_costmap->setCost(new_mx, new_my, cost);
   }
 
-  unsigned int _downsampling_factor;
   unsigned int _size_x;
   unsigned int _size_y;
+  unsigned int _downsampled_size_x;
+  unsigned int _downsampled_size_y;
+  unsigned int _downsampling_factor;
+  float _downsampled_resolution;
   nav2_costmap_2d::Costmap2D * _costmap;
   std::shared_ptr<nav2_costmap_2d::Costmap2D> _downsampled_costmap;
 };

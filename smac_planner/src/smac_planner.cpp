@@ -196,6 +196,14 @@ void SmacPlanner::configure(
     }
   }
 
+  if (_downsample_costmap && _downsampling_factor > 1) {
+    _costmap_topic_name = "downsampled_costmap";
+    _costmap_downsampler = std::make_unique<CostmapDownsampler>();
+    _downsampled_costmap = _costmap_downsampler->initialize(_costmap, _downsampling_factor);
+    _costmap_pub = std::make_unique<nav2_costmap_2d::Costmap2DPublisher>(
+            _node, _downsampled_costmap.get(), _global_frame, _costmap_topic_name, false);
+  }
+
   _raw_plan_publisher = _node->create_publisher<nav_msgs::msg::Path>("unsmoothed_plan", 1);
   _smoother_debug1_pub= _node->create_publisher<nav_msgs::msg::Path>("debug1", 1);
   _smoother_debug2_pub= _node->create_publisher<nav_msgs::msg::Path>("debug2", 1);
@@ -221,13 +229,7 @@ void SmacPlanner::activate()
   _smoother_debug3_pub->on_activate();
 
   // Init the downsampler and publisher, if needed
-  // We have to initialize here and not on SmacPlanner::configure() because we need _costmap to be properly
-  // initialized after localizing
-  if (shouldDownsample()) {
-    _costmap_downsampler = std::make_unique<CostmapDownsampler>();
-    _downsampled_costmap = _costmap_downsampler->initialize(_costmap, _downsampling_factor);
-    _costmap_pub = std::make_unique<nav2_costmap_2d::Costmap2DPublisher>(
-            _node, _downsampled_costmap.get(), _global_frame, "downsampled_costmap", false);
+  if (_costmap_pub) {
     _costmap_pub->on_activate();
   }
 }
@@ -238,7 +240,7 @@ void SmacPlanner::deactivate()
     _node->get_logger(), "Deactivating plugin %s of type SmacPlanner",
     _name.c_str());
   _raw_plan_publisher->on_deactivate();
-  if (shouldDownsample()) {
+  if (_costmap_pub) {
     _costmap_pub->on_deactivate();
   }
 }
@@ -266,13 +268,14 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
 #endif
 
   // Choose which costmap to use for the planning
-  std::shared_ptr<nav2_costmap_2d::Costmap2D> costmap;
-  if (shouldDownsample()) {
-    _costmap_downsampler->downsample();
-    _costmap_pub->publishCostmap();
-    costmap = _downsampled_costmap;
+  nav2_costmap_2d::Costmap2D * costmap;
+  if (_costmap_downsampler) {
+    costmap = _costmap_downsampler->downsample();
+    if (_node->count_subscribers(_costmap_topic_name) > 0) {
+      _costmap_pub->publishCostmap();
+    }
   } else {
-    costmap = std::make_shared<nav2_costmap_2d::Costmap2D>(*_costmap);
+    costmap = _costmap;
   }
 
   // Set Costmap
@@ -477,7 +480,6 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
   return plan;
 }
 
-
 void SmacPlanner::removeHook(std::vector<Eigen::Vector2d> & path)
 {
   // Removes the end "hooking" since goal is locked in place
@@ -489,10 +491,6 @@ void SmacPlanner::removeHook(std::vector<Eigen::Vector2d> & path)
   {
     path.end()[-2] = interpolated_second_to_last_point;
   }
-}
-
-bool SmacPlanner::shouldDownsample() {
-  return _downsample_costmap && _downsampling_factor > 1;
 }
 
 }  // namespace smac_planner
