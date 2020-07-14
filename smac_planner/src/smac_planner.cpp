@@ -75,9 +75,7 @@ SmacPlanner::SmacPlanner()
   _upsampler(nullptr),
   _node(nullptr),
   _costmap(nullptr),
-  _costmap_downsampler(nullptr),
-  _costmap_pub(nullptr),
-  _downsampled_costmap(nullptr)
+  _costmap_downsampler(nullptr)
 {
 }
 
@@ -197,11 +195,9 @@ void SmacPlanner::configure(
   }
 
   if (_downsample_costmap && _downsampling_factor > 1) {
-    _costmap_topic_name = "downsampled_costmap";
+    std::string topic_name = "downsampled_costmap";
     _costmap_downsampler = std::make_unique<CostmapDownsampler>();
-    _downsampled_costmap = _costmap_downsampler->initialize(_costmap, _downsampling_factor);
-    _costmap_pub = std::make_unique<nav2_costmap_2d::Costmap2DPublisher>(
-            _node, _downsampled_costmap.get(), _global_frame, _costmap_topic_name, false);
+    _costmap_downsampler->initialize(_node, _global_frame, topic_name, _costmap, _downsampling_factor);
   }
 
   _raw_plan_publisher = _node->create_publisher<nav_msgs::msg::Path>("unsmoothed_plan", 1);
@@ -227,10 +223,8 @@ void SmacPlanner::activate()
   _smoother_debug1_pub->on_activate();
   _smoother_debug2_pub->on_activate();
   _smoother_debug3_pub->on_activate();
-
-  // Init the downsampler and publisher, if needed
-  if (_costmap_pub) {
-    _costmap_pub->on_activate();
+  if (_costmap_downsampler) {
+    _costmap_downsampler->activatePublisher();
   }
 }
 
@@ -240,8 +234,8 @@ void SmacPlanner::deactivate()
     _node->get_logger(), "Deactivating plugin %s of type SmacPlanner",
     _name.c_str());
   _raw_plan_publisher->on_deactivate();
-  if (_costmap_pub) {
-    _costmap_pub->on_deactivate();
+  if (_costmap_downsampler) {
+    _costmap_downsampler->deactivatePublisher();
   }
 }
 
@@ -253,9 +247,7 @@ void SmacPlanner::cleanup()
   _a_star.reset();
   _smoother.reset();
   _upsampler.reset();
-  _costmap_pub.reset();
   _costmap_downsampler.reset();
-  _downsampled_costmap.reset();
   _raw_plan_publisher.reset();
 }
 
@@ -271,9 +263,6 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
   nav2_costmap_2d::Costmap2D * costmap;
   if (_costmap_downsampler) {
     costmap = _costmap_downsampler->downsample();
-    if (_node->count_subscribers(_costmap_topic_name) > 0) {
-      _costmap_pub->publishCostmap();
-    }
   } else {
     costmap = _costmap;
   }

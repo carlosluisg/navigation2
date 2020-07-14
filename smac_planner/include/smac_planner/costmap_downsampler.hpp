@@ -46,28 +46,50 @@ public:
   }
 
   /**
-   * @brief Initialize the downsampled costmap object
+   * @brief Initialize the downsampled costmap object and the ROS publisher
+   * @param node Lifecycle node pointer
+   * @param global_frame The ID of the global frame used by the costmap
+   * @param topic_name The name of the topic to publish the downsampled costmap
    * @param costmap The costmap we want to downsample
    * @param downsampling_factor Multiplier for the costmap sresolution
-   * @return A shared ptr to the downsampled costmap
    */
-  std::shared_ptr<nav2_costmap_2d::Costmap2D> initialize(
+   void initialize(
+    nav2_util::LifecycleNode::SharedPtr node,
+    std::string global_frame,
+    std::string topic_name,
     nav2_costmap_2d::Costmap2D * costmap,
     const unsigned int & downsampling_factor)
   {
+    _node = node;
+    _topic_name = topic_name;
     _costmap = costmap;
     _downsampling_factor = downsampling_factor;
     updateCostmapSize();
 
-    _downsampled_costmap = std::make_shared<nav2_costmap_2d::Costmap2D>
+    _downsampled_costmap = std::make_unique<nav2_costmap_2d::Costmap2D>
       (_downsampled_size_x, _downsampled_size_y, _downsampled_resolution,
        _costmap->getOriginX(), _costmap->getOriginY(), UNKNOWN);
 
-    return _downsampled_costmap;
+    _downsampled_costmap_pub = std::make_unique<nav2_costmap_2d::Costmap2DPublisher>(
+      _node, _downsampled_costmap.get(), global_frame, _topic_name, false);
   }
 
   /**
-   * @brief Downsample the given costmap by the downsampling factor
+   * @brief Activate the publisher of the downsampled costmap
+   */
+  void activatePublisher() {
+    _downsampled_costmap_pub->on_activate();
+  }
+
+  /**
+   * @brief Deactivate the publisher of the downsampled costmap
+   */
+  void deactivatePublisher() {
+    _downsampled_costmap_pub->on_deactivate();
+  }
+
+  /**
+   * @brief Downsample the given costmap by the downsampling factor, and publish the downsampled costmap
    * @return A ptr to the downsampled costmap
    */
   nav2_costmap_2d::Costmap2D * downsample()
@@ -86,6 +108,10 @@ public:
       new_mx = i % _downsampled_size_x;
       new_my = i / _downsampled_size_x;
       setCostOfCell(new_mx, new_my);
+    }
+
+    if (_node->count_subscribers(_topic_name) > 0) {
+      _downsampled_costmap_pub->publishCostmap();
     }
 
     return _downsampled_costmap.get();
@@ -145,8 +171,11 @@ private:
   unsigned int _downsampled_size_y;
   unsigned int _downsampling_factor;
   float _downsampled_resolution;
+  std::string _topic_name;
+  nav2_util::LifecycleNode::SharedPtr _node;
   nav2_costmap_2d::Costmap2D * _costmap;
-  std::shared_ptr<nav2_costmap_2d::Costmap2D> _downsampled_costmap;
+  std::unique_ptr<nav2_costmap_2d::Costmap2D> _downsampled_costmap;
+  std::unique_ptr<nav2_costmap_2d::Costmap2DPublisher> _downsampled_costmap_pub;
 };
 
 }  // namespace smac_planner

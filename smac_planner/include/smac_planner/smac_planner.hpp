@@ -95,8 +95,6 @@ protected:
   std::unique_ptr<Smoother> _smoother;
   std::unique_ptr<Upsampler> _upsampler;
   std::unique_ptr<CostmapDownsampler> _costmap_downsampler;
-  std::unique_ptr<nav2_costmap_2d::Costmap2DPublisher> _costmap_pub;
-  std::shared_ptr<nav2_costmap_2d::Costmap2D> _downsampled_costmap;
   nav2_util::LifecycleNode::SharedPtr _node;
   nav2_costmap_2d::Costmap2D * _costmap;
   std::string _global_frame, _name;
@@ -110,7 +108,6 @@ protected:
   SmootherParams _smoother_params;
   OptimizerParams _optimizer_params;
   int _upsampling_ratio;
-  std::string _costmap_topic_name;
 };
 
 }  // namespace smac_planner
