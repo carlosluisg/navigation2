@@ -34,7 +34,8 @@ public:
    */
   explicit CostmapDownsampler()
   : _costmap(nullptr),
-    _downsampled_costmap(nullptr)
+    _downsampled_costmap(nullptr),
+    _downsampled_costmap_pub(nullptr)
   {
   }
 
@@ -54,10 +55,10 @@ public:
    * @param downsampling_factor Multiplier for the costmap sresolution
    */
    void initialize(
-    nav2_util::LifecycleNode::SharedPtr node,
-    std::string global_frame,
-    std::string topic_name,
-    nav2_costmap_2d::Costmap2D * costmap,
+    const nav2_util::LifecycleNode::SharedPtr & node,
+    const std::string & global_frame,
+    const std::string & topic_name,
+    nav2_costmap_2d::Costmap2D * const costmap,
     const unsigned int & downsampling_factor)
   {
     _node = node;
