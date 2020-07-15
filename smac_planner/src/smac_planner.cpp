@@ -196,8 +196,8 @@ void SmacPlanner::configure(
 
   if (_downsample_costmap && _downsampling_factor > 1) {
     std::string topic_name = "downsampled_costmap";
-    _costmap_downsampler = std::make_unique<CostmapDownsampler>();
-    _costmap_downsampler->initialize(_node, _global_frame, topic_name, _costmap, _downsampling_factor);
+    _costmap_downsampler = std::make_unique<CostmapDownsampler>(_node);
+    _costmap_downsampler->initialize(_global_frame, topic_name, _costmap, _downsampling_factor);
   }
 
   _raw_plan_publisher = _node->create_publisher<nav_msgs::msg::Path>("unsmoothed_plan", 1);
@@ -260,11 +260,9 @@ nav_msgs::msg::Path SmacPlanner::createPlan(
 #endif
 
   // Choose which costmap to use for the planning
-  nav2_costmap_2d::Costmap2D * costmap;
+  nav2_costmap_2d::Costmap2D * costmap = _costmap;
   if (_costmap_downsampler) {
-    costmap = _costmap_downsampler->downsample();
-  } else {
-    costmap = _costmap;
+    costmap = _costmap_downsampler->downsample(_downsampling_factor);
   }
 
   // Set Costmap

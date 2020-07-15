@@ -31,11 +31,13 @@ class CostmapDownsampler
 public:
   /**
    * @brief A constructor for CostmapDownsampler
+   * @param node Lifecycle node pointer
    */
-  explicit CostmapDownsampler()
+  explicit CostmapDownsampler(const nav2_util::LifecycleNode::SharedPtr & node)
   : _costmap(nullptr),
     _downsampled_costmap(nullptr),
-    _downsampled_costmap_pub(nullptr)
+    _downsampled_costmap_pub(nullptr),
+    _node(node)
   {
   }
 
@@ -48,20 +50,17 @@ public:
 
   /**
    * @brief Initialize the downsampled costmap object and the ROS publisher
-   * @param node Lifecycle node pointer
    * @param global_frame The ID of the global frame used by the costmap
    * @param topic_name The name of the topic to publish the downsampled costmap
    * @param costmap The costmap we want to downsample
-   * @param downsampling_factor Multiplier for the costmap sresolution
+   * @param downsampling_factor Multiplier for the costmap resolution
    */
    void initialize(
-    const nav2_util::LifecycleNode::SharedPtr & node,
     const std::string & global_frame,
     const std::string & topic_name,
     nav2_costmap_2d::Costmap2D * const costmap,
     const unsigned int & downsampling_factor)
   {
-    _node = node;
     _topic_name = topic_name;
     _costmap = costmap;
     _downsampling_factor = downsampling_factor;
@@ -91,16 +90,19 @@ public:
 
   /**
    * @brief Downsample the given costmap by the downsampling factor, and publish the downsampled costmap
+   * @param downsampling_factor Multiplier for the costmap resolution
    * @return A ptr to the downsampled costmap
    */
-  nav2_costmap_2d::Costmap2D * downsample()
+  nav2_costmap_2d::Costmap2D * downsample(const unsigned int & downsampling_factor)
   {
     unsigned int new_mx, new_my;
+    _downsampling_factor = downsampling_factor;
     updateCostmapSize();
 
     // Adjust costmap size if needed
     if (_downsampled_costmap->getSizeInCellsX() != _downsampled_size_x ||
-      _downsampled_costmap->getSizeInCellsY() != _downsampled_size_y) {
+      _downsampled_costmap->getSizeInCellsY() != _downsampled_size_y ||
+      _downsampled_costmap->getResolution() != _downsampled_resolution) {
       resizeCostmap();
     }
 
