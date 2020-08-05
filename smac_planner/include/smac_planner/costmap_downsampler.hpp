@@ -95,7 +95,6 @@ public:
    */
   nav2_costmap_2d::Costmap2D * downsample(const unsigned int & downsampling_factor)
   {
-    unsigned int new_mx, new_my;
     _downsampling_factor = downsampling_factor;
     updateCostmapSize();
 
@@ -107,10 +106,10 @@ public:
     }
 
     // Assign costs
-    for (int i = 0; i < _downsampled_size_x * _downsampled_size_y; ++i) {
-      new_mx = i % _downsampled_size_x;
-      new_my = i / _downsampled_size_x;
-      setCostOfCell(new_mx, new_my);
+    for (int i = 0; i < _downsampled_size_x; ++i) {
+      for (int j = 0; j < _downsampled_size_y; ++j) {
+        setCostOfCell(i, j);
+      }
     }
 
     if (_node->count_subscribers(_topic_name) > 0) {
@@ -160,11 +159,20 @@ private:
     unsigned int x_offset = new_mx * _downsampling_factor;
     unsigned int y_offset = new_my * _downsampling_factor;
 
-    for(int j = 0; j < _downsampling_factor * _downsampling_factor; ++j) {
-      mx = std::min(x_offset + j % _downsampling_factor, _size_x - 1);
-      my = std::min(y_offset + j / _downsampling_factor, _size_y - 1);
-      cost = std::max(cost, _costmap->getCost(mx, my));
+    for (int i = 0; i < _downsampling_factor; ++i) {
+      mx = x_offset + i;
+      if (mx >= _size_x) {
+        continue;
+      }
+      for (int j = 0; j < _downsampling_factor; ++j) {
+        my = y_offset + j;
+        if (my >= _size_y) {
+          continue;
+        }
+        cost = std::max(cost, _costmap->getCost(mx, my));
+      }
     }
+
     _downsampled_costmap->setCost(new_mx, new_my, cost);
   }
 
