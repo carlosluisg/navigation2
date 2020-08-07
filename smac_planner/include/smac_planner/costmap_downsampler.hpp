@@ -162,12 +162,12 @@ private:
     for (int i = 0; i < _downsampling_factor; ++i) {
       mx = x_offset + i;
       if (mx >= _size_x) {
-        break;
+        continue;
       }
       for (int j = 0; j < _downsampling_factor; ++j) {
         my = y_offset + j;
         if (my >= _size_y) {
-          break;
+          continue;
         }
         cost = std::max(cost, _costmap->getCost(mx, my));
       }
